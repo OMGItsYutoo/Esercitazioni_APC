@@ -1,0 +1,62 @@
+*************************************************************************************************
+*Il programma serve a provare una semplice configurazione costituita da due 
+*sistemi S1 ed S2 dotati entrambi di un processore M68000, una ROM di 8K (addr $0-$1FFF), 
+*una RAM di 10K (addr $8000-$A7FF) e un device parallelo PIA mappato a $2004.
+*I due PIA sono interconnessi tra loro e mediante un protocollo di handshaking consentono ai
+*due sistemi di scambiarsi un messaggio. In particolare, il sistema S1 trasferisce un vettore di N caratteri
+*verso il sistema S2 sul porto parallelo. Il messaggio si trova in un'area di memoria del sistema S1
+*e viene salvato in una ulteriore area di memoria nel sistema S2.
+*
+*Questo driver serve per la programmazione del sistema S1, che effettua il trasferimento con un semplice ciclo.
+*
+*************************************************************************************************
+*DATA AREA
+    ORG $8000
+MSG     DS.B    6
+DIM     DC.B    6
+COUNT   DC.B    0 *this zero should be at $8007
+
+*PROGRAM AREA
+        ORG $8200
+PIADA   EQU $2004
+PIACA   EQU $2005
+
+MAIN    JSR DVAIN
+
+        MOVE.W  SR,D0
+        ANDI.W  #$D8FF,D0
+        MOVE.W  D0,SR
+
+LOOP    JMP     LOOP
+
+DVAIN   MOVE.B #0,PIACA
+        MOVE.B #$00,PIADA
+        MOVE.B #%00100101,PIACA
+        RTS
+
+* intlvl=3 (as we can see from .cfg file, COM1), 27*4 = 108 --> 6C in hex, so we put ISR address at 6C in ROM
+        ORG $8700
+ISRRX   MOVEM.L D0-A0/A1,-(SP)
+
+        MOVEA.L #PIADA,A1
+        MOVEA.L #MSG,A0
+        MOVE.B  COUNT,D0
+
+        MOVE.B  (A1),(A0,D0)
+
+        ADD.B   #1,D0
+
+        MOVE.B  D0,COUNT
+
+        MOVEM.L (SP)+,D0-A0/A1
+
+        RTE
+
+    END MAIN
+
+
+
+
+
+
+

@@ -1,0 +1,54 @@
+*************************************************************************************************
+*Il programma serve a provare una semplice configurazione costituita da due 
+*sistemi S1 ed S2 dotati entrambi di un processore M68000, una ROM di 8K (addr $0-$1FFF), 
+*una RAM di 10K (addr $8000-$A7FF) e un device parallelo PIA mappato a $2004.
+*I due PIA sono interconnessi tra loro e mediante un protocollo di handshaking consentono ai
+*due sistemi di scambiarsi un messaggio. In particolare, il sistema S1 trasferisce un vettore di N caratteri
+*verso il sistema S2 sul porto parallelo. Il messaggio si trova in un'area di memoria del sistema S1
+*e viene salvato in una ulteriore area di memoria nel sistema S2.
+*
+*Questo driver serve per la programmazione del sistema S1, che effettua il trasferimento con un semplice ciclo.
+*
+*************************************************************************************************
+
+*DATA AREA
+    ORG $8000
+DIM   EQU     6
+MSG DC.B    1,2,3,4,5,6
+
+*PROGRAM AREA
+        ORG $8200
+PIADB   EQU $2006
+PIACB   EQU $2007
+
+MAIN        JSR DVBOUT *inizilizzazione del porto B del PIA
+
+            MOVEA.L #PIACB,A1
+            MOVEA.L #PIADB,A2
+            MOVEA.L #MSG,A0
+            MOVE.B  #DIM,D0
+
+            CLR     D1
+            SUBQ    #1,D0
+
+SEND        MOVE.B  (A2),D1 *lettura fittizia
+            MOVE.B  (A0)+,(A2)
+        
+WAIT_ACK    MOVE.B (A1),D1
+            ANDI.B  #$80,D1     *controllo di CRB7
+            BEQ     WAIT_ACK
+
+            DBRA    D0,SEND
+    
+LOOP        JMP     LOOP
+
+
+DVBOUT  MOVE.B  #0,PIACB
+        MOVE.B  #$FF,PIADB
+        MOVE.B  #%00100100,PIACB
+        RTS
+
+    END MAIN
+
+
+
