@@ -1,0 +1,53 @@
+*************************************************************************************************
+*Il programma serve a provare una semplice configurazione costituita da due 
+*sistemi S1 ed S2 dotati entrambi di un processore M68000, una ROM di 8K (addr $0-$1FFF), 
+*una RAM di 10K (addr $8000-$A7FF) e un device parallelo PIA mappato a $2004.
+*I due PIA sono interconnessi tra loro e mediante un protocollo di handshaking consentono ai
+*due sistemi di scambiarsi un messaggio. In particolare, il sistema S1 trasferisce un vettore di N caratteri
+*verso il sistema S2 sul porto parallelo. Il messaggio si trova in un'area di memoria del sistema S1
+*e viene salvato in una ulteriore area di memoria nel sistema S2.
+*
+*Questo driver serve per la programmazione del sistema S1, che effettua il trasferimento sotto interrupt.
+*
+*************************************************************************************************
+
+    ORG $8000
+DIM  DC.B    6
+MSG  DS.B    6
+COUNT   DC.B    0 *counter "globale"
+
+    ORG $8200
+PIADA   EQU $2004
+PIACA   EQU $2005
+
+MAIN    JSR DVAIN
+    MOVE.W  SR,D0
+    ANDI.W  #$D8FF,D0
+    MOVE.W  D0,SR
+
+LOOP    JMP LOOP
+
+DVAIN   MOVE.B   #0,PIACA
+    MOVE.B  #$00,PIADA
+    MOVE.B  #%00100101,PIACA
+    RTS
+
+*lvl3 --> 4*27=108 --> HEX 6C
+    ORG $8800
+ISRRX   MOVEM.L D0-A0/A1,-(SP) 
+
+    MOVE.B  COUNT,D0
+    MOVEA.L #PIADA,A0
+    MOVEA.L #MSG,A1
+
+    MOVE.B  (A0),(A1,D0)
+
+    ADDI.B  #1,D0
+    MOVE.B  D0,COUNT
+
+    MOVEM.L (SP)+,D0-A0/A1
+    RTE
+
+    END MAIN
+
+
