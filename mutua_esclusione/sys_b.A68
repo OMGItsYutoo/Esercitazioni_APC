@@ -1,0 +1,61 @@
+*DATA AREA
+    ORG $8000
+N   EQU 5
+MSG DC.B    1,2,3,4,5
+COUNT   DC.B    0
+
+PIADB   EQU $2006
+PIACB   EQU $2007
+
+*PROGRAM AREA
+    ORG $8200
+MAIN    JSR DVBOUT
+
+    MOVE.W  SR,D0
+    AND.W  #$D8FF,D0
+    MOVE.W  D0,SR
+
+    MOVEA.L #PIADB,A0
+    MOVEA.L #MSG,A1
+
+    MOVE.B  (A0),D0
+    MOVE.B  (A1),(A0)
+    MOVE.B #1,COUNT
+
+LOOP    JMP LOOP
+
+DVBOUT  MOVE.B  #0,PIACB
+    MOVE.B  #$FF,PIADB
+    MOVE.B  #%00100101,PIACB
+    RTS
+
+*lvl4 --> 28*4=112 --> 70 in hex --> in loc 70 va scritto 00008900
+    ORG $8900
+ISRB    MOVE.L D0,-(SP)
+        MOVE.L D1,-(SP)
+        MOVE.L A0,-(SP)
+        MOVE.L A1,-(SP)
+
+        MOVE.B  COUNT,D0
+        MOVE.B  #N,D1
+        CMP.B   D0,D1
+        BEQ     DONE
+
+        MOVEA.L #PIADB,A0
+        MOVEA.L #MSG,A1
+
+        MOVE.B  (A0),D1 *lettura fittizia
+        MOVE.B  (A1,D0),(A0)
+
+        ADDI.B  #1,D0
+        MOVE.B  D0,COUNT
+
+DONE    MOVE.L (SP)+,A1
+        MOVE.L (SP)+,A0
+        MOVE.L (SP)+,D1
+        MOVE.L (SP)+,D0
+
+        RTE
+
+    END MAIN
+

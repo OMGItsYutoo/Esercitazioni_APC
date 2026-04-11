@@ -1,0 +1,26 @@
+pendingB=0;
+if(sender==None){
+    if(TAS){
+        if(sender==None){
+            sender=B;
+            lock=0;
+        }
+    }else{
+        RTE
+    }
+}
+if(sender==B && pendingB==1){
+    buff_B[curr_ch_B]=READPIAB
+    curr_ch_B++;
+    pendingB=0;
+    if(curr_ch_B==N){
+        curr_ch_B=0
+        sender=None
+        if(pendingC==1){
+            buff_C[curr_ch_C]=READPIAC
+            curr_ch_C++;
+            pendingC=0
+        }
+    }
+}
+RTE

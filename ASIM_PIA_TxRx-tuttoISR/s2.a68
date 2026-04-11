@@ -34,7 +34,7 @@ DVAIN   MOVE.B   #0,PIACA
 
 *lvl3 --> 4*27=108 --> HEX 6C
     ORG $8800
-ISRRX   MOVEM.L D0-A0/A1,-(SP) 
+ISRRX   MOVEM.L D0/A0-A1,-(SP) 
 
     MOVE.B  COUNT,D0
     MOVEA.L #PIADA,A0
@@ -45,7 +45,7 @@ ISRRX   MOVEM.L D0-A0/A1,-(SP)
     ADDI.B  #1,D0
     MOVE.B  D0,COUNT
 
-    MOVEM.L (SP)+,D0-A0/A1
+    MOVEM.L (SP)+,D0/A0-A1
     RTE
 
     END MAIN
