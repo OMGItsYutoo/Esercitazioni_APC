@@ -3,8 +3,8 @@ if(sender==None){
     if(TAS){
         if(sender==None){
             sender=B;
-            lock=0;
         }
+        lock=0;
     }else{
         RTE
     }
@@ -15,10 +15,11 @@ if(sender==B && pendingB==1){
     pendingB=0;
     if(curr_ch_B==N){
         curr_ch_B=0
-        sender=None
+        sender=C    //alternanza forzata
         if(pendingC==1){
-            buff_C[curr_ch_C]=READPIAC
+            readPos=curr_ch_C
             curr_ch_C++;
+            buff_C[readPos]=READPIAC
             pendingC=0
         }
     }
