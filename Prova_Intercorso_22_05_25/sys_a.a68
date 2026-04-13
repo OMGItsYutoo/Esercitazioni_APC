@@ -1,0 +1,270 @@
+*AREA DATI
+    ORG $8000
+N   EQU 5
+K   EQU 10
+
+SENDNONE    EQU 0
+SENDB       EQU 1
+SENDC       EQU 2
+
+BUFFB   DS.B    N
+BUFFC   DS.B    N
+
+CURRCHB DC.B    0
+CURRCHC DC.B    0
+COUNTMSG    DC.B    0
+
+SENDER  DC.B        0
+LOCK    DC.B    0
+PENDINGB    DC.B    0
+PENDINGC    DC.B    0
+
+ENDB    DC.B    0
+ENDC    DC.B    0
+
+PIABDA   EQU $2004
+PIABCA   EQU $2005
+PIACDA   EQU $2008
+PIACCA   EQU $2009
+
+    ORG $8200
+MAIN    JSR DVAIN2
+
+        CLR     D0
+        MOVE.W  SR,D0
+        ANDI.W  #$D8FF,D0
+        MOVE.W  D0,SR
+
+        MOVE.B  #0,CURRCHB
+        MOVE.B  #0,CURRCHC
+        MOVE.B  #0,COUNTMSG
+    
+LOOP    BRA LOOP
+
+DVAIN2  MOVE.B  #0,PIABCA
+        MOVE.B  #0,PIABDA
+        MOVE.B  #%00100101,PIABCA
+
+        MOVE.B  #0,PIACCA
+        MOVE.B  #0,PIACDA
+        MOVE.B  #%00100101,PIACCA
+
+        RTS
+
+*lvl3 -> in 6C va messo $00008600
+    ORG $8600
+ISRB    MOVE.B  #1,PENDINGB
+        CMP.B   #SENDNONE,SENDER
+        BNE     ISRBREAD
+
+        TAS     LOCK
+        BNE     ISRBEXITL  
+
+        CMP.B   #SENDNONE,SENDER
+        BNE     ISRBSEND
+        MOVE.B  #SENDB,SENDER
+
+ISRBSEND     MOVE.B  #0,LOCK
+            BRA     ISRBREAD
+
+ISRBEXITL   RTE
+
+ISRBREAD    CMP.B   #SENDB,SENDER
+            BNE     ISRBEXIT
+
+            CMP.B   #1,PENDINGB
+            BNE     ISRBEXIT
+
+            MOVEM.L D0/A0-A1,-(SP)
+
+            CMP.B   #2*K,COUNTMSG
+            BGT     PHASE2B
+
+            *phase1
+            MOVEA.L #PIABDA,A0
+            MOVEA.L #BUFFB,A1
+            CLR.L     D0
+            MOVE.B  CURRCHB,D0
+
+            MOVE.B  (A0),(A1,D0)
+
+            ADDI.B  #1,D0
+            MOVE.B  D0,CURRCHB
+            MOVE.B  #0,PENDINGB
+
+            CMP.B   #N,D0
+            BNE     ISRBEXIT
+
+            MOVE.B  #0,CURRCHB
+            ADDI.B  #1,COUNTMSG
+            MOVE.B  #SENDC,SENDER
+
+            CMP.B   #1,PENDINGC
+            BNE     ISRBEXIT
+
+            *updating C status vars before unlocking it
+            CLR.L     D0
+            MOVE.B  CURRCHC,D0
+            ADDI.B  #1,CURRCHC
+            MOVE.B  #0,PENDINGC
+
+            MOVEA.L #PIACDA,A0
+            MOVEA.L #BUFFC,A1
+            
+            MOVE.B  (A0),(A1,D0)
+
+            BRA     ISRBEXIT
+
+PHASE2B     MOVEA.L #PIABDA,A0
+            MOVEA.L #BUFFB,A1
+            CLR.L     D0
+            MOVE.B  CURRCHB,D0
+
+            MOVE.B  (A0),(A1,D0)
+
+            ADDI.B  #1,D0
+            MOVE.B  D0,CURRCHB
+            MOVE.B  #0,PENDINGB
+
+            CMP.B   #N,D0
+            BNE     ISRBEXIT
+
+            CMP.B   #0,BUFFB
+            BNE     RESETENDC
+
+            MOVE.B  #1,ENDB
+            CMP.B   #1,ENDC
+            BNE     AFTERRESETENDC
+
+            ANDI.B  #$FE,PIACCA
+            ANDI.B  #$FE,PIABCA
+
+            BRA     AFTERRESETENDC
+RESETENDC   MOVE.B  #0,ENDC
+
+AFTERRESETENDC MOVE.B  #0,CURRCHB
+            MOVE.B  #SENDC,SENDER
+            CMP.B   #1,PENDINGC
+            BNE     ISRBEXIT
+
+            CLR.L     D0
+            MOVE.B  CURRCHC,D0
+            ADDI.B  #1,CURRCHC
+            MOVE.B  #0,PENDINGC
+
+            MOVEA.L #PIACDA,A0
+            MOVEA.L #BUFFC,A1
+            
+            MOVE.B  (A0),(A1,D0)
+
+ISRBEXIT    MOVEM.L (SP)+,D0/A0-A1
+            RTE
+
+*lvl2 -> IN $68 va messo $00008800
+    ORG $8800
+ISRC    MOVE.B  #1,PENDINGC
+        CMP.B   #SENDNONE,SENDER
+        BNE     ISRCREAD
+
+        TAS     LOCK
+        BNE     ISRCEXITL  
+
+        CMP.B   #SENDNONE,SENDER
+        BNE     ISRCSEND
+        MOVE.B  #SENDC,SENDER
+
+ISRCSEND     MOVE.B  #0,LOCK
+            BRA     ISRCREAD
+
+ISRCEXITL   RTE
+
+ISRCREAD    CMP.B   #SENDC,SENDER
+            BNE     ISRCEXIT
+
+            CMP.B   #1,PENDINGC
+            BNE     ISRCEXIT
+
+            MOVEM.L D0/A0-A1,-(SP)
+
+            CMP.B   #2*K,COUNTMSG
+            BGT     PHASE2C
+
+            *phase1
+            MOVEA.L #PIACDA,A0
+            MOVEA.L #BUFFC,A1
+            CLR.L     D0
+            MOVE.B  CURRCHC,D0
+
+            MOVE.B  (A0),(A1,D0)
+
+            ADDI.B  #1,D0
+            MOVE.B  D0,CURRCHC
+            MOVE.B  #0,PENDINGC
+
+            CMP.B   #N,D0
+            BNE     ISRCEXIT
+
+            MOVE.B  #0,CURRCHC
+            ADDI.B  #1,COUNTMSG
+            MOVE.B  #SENDC,SENDER
+
+            CMP.B   #1,PENDINGB
+            BNE     ISRCEXIT
+
+            *updating B status vars before unlocking it
+            CLR.L     D0
+            MOVE.B  CURRCHB,D0
+            ADDI.B  #1,CURRCHB
+            MOVE.B  #0,PENDINGB
+
+            MOVEA.L #PIABDA,A0
+            MOVEA.L #BUFFB,A1
+
+            MOVE.B  (A0),(A1,D0)
+
+            BRA     ISRCEXIT
+
+PHASE2C     MOVEA.L #PIACDA,A0
+            MOVEA.L #BUFFC,A1
+            CLR.L     D0
+            MOVE.B  CURRCHC,D0
+
+            MOVE.B  (A0),(A1,D0)
+
+            ADDI.B  #1,D0
+            MOVE.B  D0,CURRCHC
+            MOVE.B  #0,PENDINGC
+
+            CMP.B   #N,D0
+            BNE     ISRCEXIT
+
+            CMP.B   #0,BUFFC
+            BNE     RESETENDB
+
+            MOVE.B  #1,ENDC
+            CMP.B   #1,ENDB
+            BNE     AFTERRESETENDB
+
+            ANDI.B  #$FE,PIACCA
+            ANDI.B  #$FE,PIABCA
+
+            BRA     AFTERRESETENDB
+RESETENDB   MOVE.B  #0,ENDB
+
+AFTERRESETENDB MOVE.B  #0,CURRCHC
+            MOVE.B  #SENDB,SENDER
+            CMP.B   #1,PENDINGB
+            BNE     ISRCEXIT
+
+            CLR.L     D0
+            MOVE.B  CURRCHB,D0
+            ADDI.B  #1,CURRCHB
+            MOVE.B  #0,PENDINGB
+
+            MOVEA.L #PIABDA,A0
+            MOVEA.L #BUFFB,A1
+            
+            MOVE.B  (A0),(A1,D0)
+
+ISRCEXIT    MOVEM.L (SP)+,D0/A0-A1
+            RTE

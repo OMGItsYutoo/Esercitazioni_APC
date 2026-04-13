@@ -1,0 +1,73 @@
+*AREA DATI
+    ORG $8000
+* 20 messaggi da esattamente 5 byte (caratteri) ciascuno
+MSGS    DC.B    'HELLO','WORLD','PROVA','TEST1'
+        DC.B    'ESAME','PIZZA','PASTA','MANDO'
+        DC.B    'DATI1','DATI2','DATI3','DATI4'
+        DC.B    'DATI5','DATI6','DATI7','0STOP'  ; <--- Il 16° messaggio inizia con '0' (per Fase 2)
+        DC.B    'NOUSE','EXTRA','FINAL','ULTIM'
+
+COUNTCH     DC.B    0
+COUNTMSG    DC.B    0
+
+TOTMSG  EQU     20 
+N   EQU     5
+
+PIADB   EQU $2006
+PIACB   EQU $2007
+
+    ORG $8200
+MAIN    JSR     DVBOUT
+
+        CLR.L     D0
+        MOVE.W  SR,D0   
+        ANDI.W  #$D8FF,D0
+        MOVE.W  D0,SR
+
+        MOVE.B  #0,COUNTMSG
+
+        MOVEA.L #PIADB,A0
+        MOVEA.L #MSGS,A1
+
+        MOVE.B  (A0),D1 *lettura fittizia
+        MOVE.B  (A1),(A0)
+
+        MOVE.B  #1,COUNTCH
+
+LOOP    BRA     LOOP
+
+DVBOUT  MOVE.B  #0,PIACB
+        MOVE.B  #$FF,PIADB
+        MOVE.B  #%00100101,PIACB
+        RTS
+
+*LVL4 -> in $70 va messo $00008700
+    ORG $8700
+ISRTX   CMP.B   #TOTMSG,COUNTMSG
+        BEQ     ISRTXEXIT
+
+        MOVEM.L D0-D1/A0-A1,-(SP)
+
+        MOVEA.L #PIADB,A0
+        MOVEA.L #MSGS,A1
+        
+        CLR.L     D0
+        CLR.L     D1
+        MOVE.B  COUNTCH,D0
+        MOVE.B  COUNTMSG,D1
+        MULU    #N,D1
+        ADD     D1,D0    
+
+        MOVE.B  (A0),D1 *lettura fittizia
+        MOVE.B  (A1,D0),(A0)
+
+        ADDI.B  #1,COUNTCH
+
+        CMP.B   #N,COUNTCH
+        BNE     RESTORECTX
+
+        MOVE.B  #0,COUNTCH
+        ADDI.B  #1,COUNTMSG
+
+RESTORECTX  MOVEM.L (SP)+,D0-D1/A0-A1
+ISRTXEXIT   RTE  
