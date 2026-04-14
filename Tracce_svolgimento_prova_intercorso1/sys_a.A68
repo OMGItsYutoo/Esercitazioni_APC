@@ -1,0 +1,169 @@
+*AREA DATI
+    ORG  $8000
+N   EQU     5
+N_ITER  EQU 10
+K   DC.B    0
+
+MSGBPITER   EQU 2
+MSGCPITER   EQU 1
+
+BUFFB   DS.B    N*MSGBPITER
+BUFFC   DS.B    N*MSGCPITER
+
+COUNTMSGB   DC.B    0
+COUNTMSGC   DC.B    0
+
+CURRCHB     DC.B    0
+CURRCHC     DC.B    0
+
+ENDB    DC.B    0
+ENDC    DC.B    0
+
+PIABDA  EQU $2004
+PIABCA  EQU $2005
+PIACDA  EQU $2008
+PIACCA  EQU $2009
+
+*AREA PROGRAMMA
+    ORG $8200
+MAIN    JSR INITPIAS
+
+        CLR.L   D0
+        MOVE.W  SR,D0
+        ANDI.W  #$D8FF,D0
+        MOVE.W  D0,SR
+
+        MOVE.B  #0,CURRCHC
+        MOVE.B  #0,CURRCHB
+        MOVE.B  #0,K
+        MOVE.B  #0,COUNTMSGB
+        MOVE.B  #0,COUNTMSGC
+
+LOOP    BRA     LOOP
+
+INITPIAS    MOVE.B  #0,PIABCA
+            MOVE.B  #0,PIABDA
+            MOVE.B  #%00100101,PIABCA
+            
+            MOVE.B  #0,PIACCA
+            MOVE.B  #0,PIACDA
+            MOVE.B  #%00100101,PIACCA
+            RTS
+
+    ORG $8600
+ISRB    CMP.B   #1,ENDB
+        BEQ     ISRBEXIT
+
+        MOVEM.L D0-D1/A0-A1,-(SP)
+
+        MOVEA.L #PIABDA,A0
+        MOVEA.L #BUFFB,A1
+
+        CLR.L   D0
+        CLR.L   D1
+        MOVE.B  CURRCHB,D0
+        MOVE.B  COUNTMSGB,D1
+        MULU    #N,D1
+        ADD.B   D1,D0  
+
+        MOVE.B  (A0),(A1,D0) 
+        ADDI.B  #1,CURRCHB
+
+        CMP.B   #N,CURRCHB
+        BNE     RESTORECTX
+
+        ADDI.B  #1,COUNTMSGB
+        MOVE.B  #0,CURRCHB
+
+        CMP.B   #MSGBPITER,COUNTMSGB
+        BNE     RESTORECTX
+
+        MOVE.B  #1,ENDB
+
+        CMP.B   #1,ENDC
+        BNE     RESTORECTX
+
+        ADDI.B  #1,K
+
+        CMP.B   #N_ITER,K
+        BEQ     RESTORECTX
+
+        MOVE.B  #0,COUNTMSGB
+        MOVE.B  #0,ENDB
+        MOVE.B  #0,ENDC
+
+        CLR.L   D0
+        MOVE.B  PIACCA,D0 	
+		ANDI.B  #$80,D0
+        BEQ     RESTORECTX
+
+        MOVEA.L #PIACDA,A0
+        MOVEA.L #BUFFC,A1
+
+        CLR.L   D0
+        MOVE.B  CURRCHC,D0
+        ADDI.B  #1,CURRCHC
+
+        MOVE.B  (A0),(A1,D0) 
+
+RESTORECTX  MOVEM.L (SP)+,D0-D1/A0-A1
+ISRBEXIT    RTE
+
+    ORG $8800
+ISRC    CMP.B   #1,ENDC
+        BEQ     ISRCEXIT
+
+        MOVEM.L D0-D1/A0-A1,-(SP)
+
+        MOVEA.L #PIACDA,A0
+        MOVEA.L #BUFFC,A1
+
+        CLR.L   D0
+        CLR.L   D1
+        MOVE.B  CURRCHC,D0
+        MOVE.B  COUNTMSGC,D1
+        MULU    #N,D1
+        ADD.B   D1,D0  
+
+        MOVE.B  (A0),(A1,D0) 
+        ADDI.B  #1,CURRCHC
+
+        CMP.B   #N,CURRCHC
+        BNE     RESTORECTXC
+
+        ADDI.B  #1,COUNTMSGC
+        MOVE.B  #0,CURRCHC
+
+        CMP.B   #MSGCPITER,COUNTMSGC
+        BNE     RESTORECTXC
+
+        MOVE.B  #1,ENDC
+
+        CMP.B   #1,ENDB
+        BNE     RESTORECTXC
+        
+        ADDI.B  #1,K
+
+        CMP.B   #N_ITER,K
+        BEQ     RESTORECTXC
+
+        MOVE.B  #0,COUNTMSGC
+        MOVE.B  #0,ENDB
+        MOVE.B  #0,ENDC
+
+        CLR.L   D0
+        MOVE.B  PIABCA,D0 	
+		ANDI.B  #$80,D0
+        BEQ     RESTORECTXC
+
+        MOVEA.L #PIABDA,A0
+        MOVEA.L #BUFFB,A1
+
+        CLR.L   D0
+        MOVE.B  CURRCHB,D0
+        ADDI.B  #1,CURRCHB
+
+        MOVE.B  (A0),(A1,D0) 
+
+RESTORECTXC  MOVEM.L (SP)+,D0-D1/A0-A1
+ISRCEXIT    RTE
