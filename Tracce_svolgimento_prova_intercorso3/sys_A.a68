@@ -1,0 +1,147 @@
+*AREA DATI
+    ORG $8000
+N   EQU 5
+N_ITER   EQU 10
+MSGPITERB   EQU 2
+MSGPITERC   EQU 1
+
+BUFFB   DS.B    N*MSGPITERB
+BUFFC   DS.B    N*MSGPITERC
+
+CURRCHB DC.B    0
+CURRCHC DC.B    0
+COUNTMSGB   DC.B    0
+COUNTMSGC   DC.B    0
+K   DC.B    0
+
+LOCK  DC.B    0
+SENDER  DC.B    0
+SENDNONE    EQU 0
+SENDB       EQU 1
+SENDC       EQU 2
+
+PENDINGB    DC.B    0
+PENDINGC    DC.B    0
+
+ENDB    DC.B    0
+ENDC    DC.B    0
+
+PIABDA  EQU $2004
+PIABCA  EQU $2005
+PIACDA  EQU $2008
+PIACCA  EQU $2009
+
+*AREA PROGRAMMA
+    ORG $8200
+MAIN    JSR INITPIAS
+
+        CLR.L   D0
+        MOVE.W  SR,D0
+        ANDI.W  #$D8FF,D0
+        MOVE.W  D0,SR
+
+*eventuale inizializzazione variabili
+
+LOOP    BRA     LOOP
+
+INITPIAS    MOVE.B  #0,PIABCA
+            MOVE.B  #0,PIABDA
+            MOVE.B  #%00100101,PIABCA *interrupt mode, trasmission mod 100
+            MOVE.B  #0,PIACCA
+            MOVE.B  #0,PIACDA
+            MOVE.B  #%00100101,PIACCA *interrupt mode, trasmission mod 100
+            RTS
+
+*lvl3 -> in $6c $00008600
+        ORG $8600
+ISRB    MOVE.B  #1,PENDINGB
+        CMP.B   #1,ENDB
+        BEQ     ISREXITB
+
+        CMP.B   #SENDNONE,SENDER
+        BNE     ISRBSEND
+
+        TAS     LOCK
+        BNE     ISREXITB
+
+        CMP.B   #SENDNONE,SENDER
+        BNE     RELLOCK
+        MOVE.B  #SENDB,SENDER
+
+RELLOCK     MOVE.B  #0,LOCK
+ISRBSEND    CMP.B   #1,PENDINGB
+            BNE     ISREXITB
+
+            CMP.B   #SENDB,SENDER
+            BNE     ISREXITB
+
+            MOVEM.L D0-D1/A0-A1,-(SP)
+
+            CLR.L   D0
+            CLR.L   D1
+            MOVEA.L #PIABDA,A0
+            MOVEA.L #BUFFB,A1
+            MOVE.B  CURRCHB,D0
+            MOVE.B  COUNTMSGB,D1
+            MULU    #N,D1
+            ADD.L   D1,D0
+
+            MOVE.B  (A0),(A1,D0)
+
+            ADDI.B  #1,CURRCHB
+            MOVE.B  #0,PENDINGB
+
+            CMP.B   #N,CURRCHB
+            BNE     RESTORECTX
+
+            ADDI.B  #1,COUNTMSGB
+            MOVE.B  #0,CURRCHB
+
+            CMP.B   #MSGPITERB,COUNTMSGB
+            BNE     CHECKC
+
+            MOVE.B  #1,ENDB
+
+            CMP.B   #1,ENDC
+            BNE     CHECKC
+
+            ADDI.B  #1,K
+
+            CMP.B   #N_ITER,K
+            BNE     RSTENDVARS
+
+            CLR.L   D0
+            MOVE.B  PIABCA,D0
+            ANDI.B  #$FE,D0
+            MOVE.B  D0,PIABCA
+
+            MOVE.B  PIACCA,D0
+            ANDI.B  #$FE,D0
+            MOVE.B  D0,PIACCA
+
+            BRA RESTORECTX
+
+RSTENDVARS  MOVE.B  #0,ENDB
+            MOVE.B  #0,ENDC
+            MOVE.B  #0,COUNTMSGB
+            MOVE.B  #0,COUNTMSGC
+
+CHECKC      MOVE.B  #SENDNONE,SENDER
+            
+            CMP.B   #1,PENDINGC
+            BNE     RESTORECTX
+
+            CLR.L   D0
+            MOVE.B  #SENDC,SENDER
+            MOVE.B  CURRCHC,D0
+            ADDI.B  #1,CURRCHC
+            MOVE.B  #0,PENDINGC
+
+            MOVEA.L #PIACDA,A0
+            MOVEA.L #BUFFC,A1
+
+            MOVE.B  (A0),(A1,D0)
+
+RESTORECTX  MOVEM.L (SP)+,D0-D1/A0-A1
+
+ISREXITB    RTE
