@@ -1,0 +1,110 @@
+*AREA DATI
+    ORG $8000
+N   EQU 5
+M   EQU 10
+
+BUFFA   DS.B    M*N
+BUFFC   DS.B    1
+
+CURRCHA DC.B    0
+NUMMSGA DC.B    0
+NUMCHC DC.B    0
+
+ENDC    DC.B    0
+
+PIADA   EQU $2004
+PIACA   EQU $2005
+
+USARTD  EQU $2008
+USARTC  EQU $2009
+
+*AREA PROGRAMMA
+    ORG $8200
+MAIN    JSR INITPIA
+        JSR INITUSART
+
+        MOVE.W  SR,D0
+        ANDI.W  #$D8FF,D0
+        MOVE.W  D0,SR
+
+LOOP    BRA LOOP
+
+INITPIA MOVE.B  #0,PIACA
+        MOVE.B  #0,PIADA
+        MOVE.B  #%00100101
+        RTS
+
+INITUSART   MOVE.B #$5D,USARTC
+            MOVE.B #36,USARTC
+            RTS
+
+*lvl3 --> in 6c goes $00008600
+    ORG $8600
+ISRA    MOVE.B  #0,NUMCHC
+        
+        MOVEM.L D0-D1/A0-A1,-(SP)
+
+        MOVEA.L #PIADA,A0
+        MOVEA.L #BUFFA,A1
+        CLR.L   D0
+        CLR.L   D1
+        MOVE.B  CURRCHA,D0
+        MOVE.B  NUMMSGA,D1
+
+        MULU    #N,D1
+        ADD.L   D1,D0
+
+        MOVE.B  (A0),(A1,D0)
+
+        ADDI.B  #1,CURRCHA
+
+        CMP.B   #N,CURRCHA
+        BNE     RESTORECTX
+
+        ADDI.B  #1,NUMMSGA
+        MOVE.B  #0,CURRCHA
+
+        CMP.B   #M,NUMMSGA
+        BEQ     ENDTRANSM
+
+        CLR.L   D0
+        CLR.L   D1
+        MOVE.B  NUMMSGA,D0
+        MULU    #N,D0
+        SUBQ.B  #1,D0
+
+        MOVE.B  (A1,D0),D1
+
+        CMP.B   #0,D1
+        BEQ     ENDTRANSM
+
+        CMP.B   #1,ENDC
+        BNE     RESTORECTX
+
+ENDTRANSM   MOVE.B  #1,ENDC
+            ANDI.B  #$FE,PIACA
+            ANDI.B  #$FB,USARTC
+            
+RESTORECTX  MOVEM.L (SP)+,D0-D1/A0-A1 
+            RTE
+
+*lvl4 --> 70
+    ORG $8800
+ISRC    CMP.B   #1,ENDC
+        BEQ     ISRCEXIT
+
+        MOVEM.L A0-A1,-(SP)
+
+        MOVEA.L #USARTD,A0
+        MOVEA.L #BUFFC,A1
+
+        MOVE.B  (A0),(A1)
+        ADDI.B  #1,NUMCHC
+
+        CMP.B   #2,NUMCHC
+        BNE     RESTORECTX
+
+        MOVE.B  #1,ENDC
+
+RESTORECTX  MOVEM.L (SP)+,A0-A1 
+ISRCEXIT    RTE
