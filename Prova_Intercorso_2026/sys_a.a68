@@ -1,0 +1,373 @@
+*AREA DATI
+    ORG $8000
+N   EQU 5
+K   EQU 10
+
+SENDNONE    EQU 0
+SENDB       EQU 1
+SENDC       EQU 2
+
+BUFFB   DS.B    N*K
+BUFFC   DS.B    N*K
+
+CURRCHB DC.B    0
+CURRCHC DC.B    0
+NUMMSGB DC.B    0
+NUMMSGC DC.B    0
+MSGRECEIVED    DC.B    0
+SLOTAVLBL    DC.B    K
+
+SENDER  DC.B        0
+LOCK    DC.B    0
+PENDINGB    DC.B    0
+PENDINGC    DC.B    0
+
+ENDB    DC.B    0
+ENDC    DC.B    0
+
+CANENDB    DC.B    0
+CANENDC    DC.B    0
+
+PIABDA   EQU $2004
+PIABCA   EQU $2005
+PIACDA   EQU $2008
+PIACCA   EQU $2009
+
+    ORG $8200
+MAIN    JSR INITPIAS
+
+        CLR     D0
+        MOVE.W  SR,D0
+        ANDI.W  #$D8FF,D0
+        MOVE.W  D0,SR
+
+        MOVE.B  #0,CURRCHB
+        MOVE.B  #0,CURRCHC
+        MOVE.B  #0,MSGRECEIVED
+        MOVE.B  #K,SLOTAVLBL
+    
+LOOP    BRA LOOP
+
+INITPIAS  MOVE.B  #0,PIABCA
+        MOVE.B  #0,PIABDA
+        MOVE.B  #%00100101,PIABCA
+
+        MOVE.B  #0,PIACCA
+        MOVE.B  #0,PIACDA
+        MOVE.B  #%00100101,PIACCA
+
+        RTS
+
+*lvl3 -> in 6C va messo $00008600
+    ORG $8600
+ISRB    MOVE.B  #1,PENDINGB
+        
+        CMP.B   #1,ENDB
+        BEQ     ISRBEXIT
+        
+        CMP.B   #2*K,MSGRECEIVED
+        BGE     PHASE2B
+
+        MOVEM.L D0-D1/A0-A1,-(SP)  ;salvataggio del contesto del processore
+
+        MOVEA.L #PIABDA,A0
+        MOVEA.L #BUFFB,A1
+        CLR.L   D0
+        CLR.L   D1
+        MOVE.B  CURRCHB,D0
+        MOVE.B  NUMMSGB,D1
+
+        MULU    #N,D1
+        ADD.L   D1,D0
+
+        MOVE.B  (A0),(A1,D0)
+
+        MOVEM.L (SP)+,D0-D1/A0-A1   ;ripristino del contesto
+        
+        ADDI.B  #1,CURRCHB
+        MOVE.B  #0,PENDINGB
+
+        CMP.B   #N,CURRCHB
+        BNE     ISRBEXIT
+        
+        MOVE.B  #0,CURRCHB
+        ADDI.B  #1,MSGRECEIVED
+        ADDI.B  #1,NUMMSGB
+
+        CMP.B   #K,NUMMSGB
+        BNE     ISRBEXIT
+
+        MOVE.B  #1,ENDB
+
+        CMP.B   #1,ENDC
+        BNE     ISRBEXIT
+
+        *phase1 ended
+        MOVE.B  #0,NUMMSGB  ;resettando qui queste due vars, si fa in modo che i messaggi della fase 2
+        MOVE.B  #0,NUMMSGC  ;sovrascrivano quelli della fase 1
+
+        MOVE.B  #0,ENDB
+        MOVE.B  #0,ENDC
+
+        BRA     ISRBEXIT
+
+PHASE2B CMP.B   #SENDNONE,SENDER
+        BNE     ISRBREAD
+
+        TAS     LOCK
+        BNE     ISRBEXIT  
+
+        CMP.B   #SENDNONE,SENDER
+        BNE     ISRBRELLOCK
+        MOVE.B  #SENDB,SENDER
+
+ISRBRELLOCK MOVE.B  #0,LOCK
+ISRBREAD    CMP.B   #SENDB,SENDER
+            BNE     ISRBEXIT
+
+            CMP.B   #1,PENDINGB
+            BNE     ISRBEXIT
+
+            CMP.B   #0,CURRCHB
+            BNE     BSKIPSLOTUPD
+            SUBI.B  #1,SLOTAVLBL
+
+BSKIPSLOTUPD    MOVEM.L D0-D1/A0-A1,-(SP)  ;salvataggio del contesto del processore
+
+                MOVEA.L #PIABDA,A0
+                MOVEA.L #BUFFB,A1
+                CLR.L   D0
+                CLR.L   D1
+                MOVE.B  CURRCHB,D0
+                MOVE.B  NUMMSGB,D1
+
+                MULU    #N,D1
+                ADD.L   D1,D0
+
+                MOVE.B  (A0),(A1,D0)
+
+                MOVEM.L (SP)+,D0-D1/A0-A1   ;ripristino del contesto
+
+                ADDI.B  #1,CURRCHB
+                MOVE.B  #0,PENDINGB
+
+                CMP.B   #N,CURRCHB
+                BNE     ISRBEXIT
+
+                MOVE.B  #1,CANENDB
+                MOVE.B  #0,CURRCHB
+                ADDI.B  #1,MSGRECEIVED
+                ADDI.B  #1,NUMMSGB
+
+                CMP.B   #0,SLOTAVLBL
+                BEQ     BENDTRANSM
+
+                CMP.B   #1,SLOTAVLBL
+                BNE     BRELSENDERNONE
+
+                CMP.B   #0,CANENDC
+                BNE     BRELSENDERNONE
+
+                MOVE.B  #SENDC,SENDER
+
+                BRA     CCHECKPENDING
+
+BRELSENDERNONE  MOVE.B  #SENDNONE,SENDER
+  
+CCHECKPENDING   CMP.B   #1,PENDINGC
+                BNE     ISRBEXIT
+
+                SUBI.B  #1,SLOTAVLBL
+                
+                MOVEM.L D0-D1/A0-A1,-(SP)  ;salvataggio del contesto del processore
+
+                *updating C status vars before unlocking it
+                CLR.L   D0
+                CLR.L   D1
+                MOVE.B  CURRCHC,D0
+                MOVE.B  NUMMSGC,D1
+                ADDI.B  #1,CURRCHC
+                MOVE.B  #0,PENDINGC
+                MOVE.B  #SENDC,SENDER
+
+                MULU    #N,D1
+                ADD.L   D1,D0
+
+                MOVEA.L #PIACDA,A0
+                MOVEA.L #BUFFC,A1
+
+                MOVE.B  (A0),(A1,D0)
+
+                MOVEM.L (SP)+,D0-D1/A0-A1   ;ripristino del contesto
+
+                BRA     ISRBEXIT
+
+BENDTRANSM   ANDI.B  #$FE,PIACCA
+            ANDI.B  #$FE,PIABCA
+
+ISRBEXIT RTE
+
+*lvl4 -> in 70 va messo $00008800
+    ORG $8900
+ISRC    MOVE.B  #1,PENDINGC
+        
+        CMP.B   #1,ENDC
+        BEQ     ISRCEXIT
+        
+        CMP.B   #2*K,MSGRECEIVED
+        BGE     PHASE2C
+
+        MOVEM.L D0-D1/A0-A1,-(SP)  ;salvataggio del contesto del processore
+
+        MOVEA.L #PIACDA,A0
+        MOVEA.L #BUFFC,A1
+        CLR.L   D0
+        CLR.L   D1
+        MOVE.B  CURRCHC,D0
+        MOVE.B  NUMMSGC,D1
+
+        MULU    #N,D1
+        ADD.L   D1,D0
+
+        MOVE.B  (A0),(A1,D0)
+
+        MOVEM.L (SP)+,D0-D1/A0-A1   ;ripristino del contesto
+        
+        ADDI.B  #1,CURRCHC
+        MOVE.B  #0,PENDINGC
+
+        CMP.B   #N,CURRCHC
+        BNE     ISRCEXIT
+        
+        MOVE.B  #0,CURRCHC
+        ADDI.B  #1,MSGRECEIVED
+        ADDI.B  #1,NUMMSGC
+
+        CMP.B   #K,NUMMSGC
+        BNE     ISRCEXIT
+
+        MOVE.B  #1,ENDC
+
+        CMP.B   #1,ENDB
+        BNE     ISRCEXIT
+
+        *phase1 ended
+        MOVE.B  #0,NUMMSGC  ;resettando qui queste due vars, si fa in modo che i messaggi della fase 2
+        MOVE.B  #0,NUMMSGB  ;sovrascrivano quelli della fase 1
+
+        MOVE.B  #0,ENDC
+        MOVE.B  #0,ENDB
+
+        BRA     ISRCEXIT
+
+PHASE2C CMP.B   #SENDNONE,SENDER
+        BNE     ISRCREAD
+
+        TAS     LOCK
+        BNE     ISRCEXIT  
+
+        CMP.B   #SENDNONE,SENDER
+        BNE     ISRCRELLOCK
+        MOVE.B  #SENDC,SENDER
+
+ISRCRELLOCK MOVE.B  #0,LOCK
+ISRCREAD    CMP.B   #SENDC,SENDER
+            BNE     ISRCEXIT
+
+            CMP.B   #1,PENDINGC
+            BNE     ISRCEXIT
+
+            CMP.B   #0,CURRCHC
+            BNE     CSKIPSLOTUPD
+            SUBI.B  #1,SLOTAVLBL
+
+CSKIPSLOTUPD    MOVEM.L D0-D1/A0-A1,-(SP)  ;salvataggio del contesto del processore
+
+                MOVEA.L #PIACDA,A0
+                MOVEA.L #BUFFC,A1
+                CLR.L   D0
+                CLR.L   D1
+                MOVE.B  CURRCHC,D0
+                MOVE.B  NUMMSGC,D1
+                
+                MULU    #N,D1
+                ADD.L   D1,D0
+
+                MOVE.B  (A0),(A1,D0)
+
+                MOVEM.L (SP)+,D0-D1/A0-A1   ;ripristino del contesto
+
+                ADDI.B  #1,CURRCHC
+                MOVE.B  #0,PENDINGC
+
+                CMP.B   #N,CURRCHC
+                BNE     ISRCEXIT
+
+                MOVE.B  #1,CANENDC
+                MOVE.B  #0,CURRCHC
+                ADDI.B  #1,MSGRECEIVED
+                ADDI.B  #1,NUMMSGC
+
+                CMP.B   #0,SLOTAVLBL
+                BEQ     CENDTRANSM
+
+                CMP.B   #1,SLOTAVLBL
+                BNE     CRELSENDERNONE
+
+                CMP.B   #0,CANENDB
+                BNE     CRELSENDERNONE
+
+                MOVE.B  #SENDB,SENDER
+
+                BRA     BCHECKPENDING
+
+CRELSENDERNONE  MOVE.B  #SENDNONE,SENDER
+  
+BCHECKPENDING   CMP.B   #1,PENDINGB
+                BNE     ISRCEXIT
+
+                MOVEM.L D0-D1/A0-A1,-(SP)  ;salvataggio del contesto del processore
+
+                SUBI.B  #1,SLOTAVLBL
+
+                *updating B status vars before unlocking it
+                CLR.L   D0
+                CLR.L   D1
+                MOVE.B  CURRCHB,D0
+                MOVE.B  NUMMSGB,D1
+                ADDI.B  #1,CURRCHB
+                MOVE.B  #0,PENDINGB
+                MOVE.B  #SENDB,SENDER
+
+                MULU    #N,D1
+                ADD.L   D1,D0
+
+                MOVEA.L #PIABDA,A0
+                MOVEA.L #BUFFB,A1
+
+                MOVE.B  (A0),(A1,D0)
+
+                MOVEM.L (SP)+,D0-D1/A0-A1   ;ripristino del contesto
+
+                BRA     ISRCEXIT
+
+CENDTRANSM   ANDI.B  #$FE,PIABCA
+            ANDI.B  #$FE,PIACCA
+
+ISRCEXIT RTE        
+
+        END     MAIN
+
+
+
+
+
+
+
+
+
+
+
+
+
+
